@@ -1,0 +1,1712 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>五金进销存 - 移动版</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * { -webkit-tap-highlight-color: transparent; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; overscroll-behavior-y: none; }
+        .page { display: none; animation: fadeIn 0.2s ease; }
+        .page.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        /* 底部导航安全区域 */
+        .safe-bottom { padding-bottom: env(safe-area-inset-bottom, 20px); }
+        
+        /* 扫码框动画 */
+        .scan-line {
+            position: absolute;
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(to right, transparent, #10b981, transparent);
+            animation: scan 2s linear infinite;
+            box-shadow: 0 0 10px #10b981;
+        }
+        @keyframes scan { 0% { top: 0; } 100% { top: 100%; } }
+        
+        /* 卡片滑动 */
+        .swipe-card { transition: transform 0.2s; }
+        .swipe-card:active { transform: scale(0.98); }
+        
+        /* 数量输入器 */
+        .num-stepper input::-webkit-inner-spin-button { -webkit-appearance: none; }
+        
+        /* 打印样式 */
+        @media print {
+            .no-print { display: none !important; }
+            .print-only { display: block !important; }
+            body { background: white; }
+        }
+        
+        /* 自定义滚动条 */
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        
+        /* 加载动画 */
+        .loader {
+            border: 3px solid #f3f4f6;
+            border-top: 3px solid #3b82f6;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        /* 五金主题色 */
+        .theme-blue { color: #1e40af; }
+        .bg-theme { background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); }
+        .bg-card { background: rgba(255,255,255,0.95); backdrop-filter: blur(10px); }
+        
+        /* 表格横向滚动 */
+        .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+        
+        /* 模态框动画 */
+        .modal-enter { animation: modalUp 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+        @keyframes modalUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 h-screen overflow-hidden">
+
+    <!-- 启动页 -->
+    <div id="splash" class="fixed inset-0 bg-theme z-50 flex flex-col items-center justify-center text-white">
+        <div class="w-24 h-24 bg-white rounded-2xl flex items-center justify-center mb-6 shadow-2xl">
+            <i class="fas fa-tools text-4xl text-blue-600"></i>
+        </div>
+        <h1 class="text-2xl font-bold mb-2">五金进销存</h1>
+        <p class="text-blue-100 text-sm">移动版 v2.0</p>
+        <div class="mt-8 w-48 h-1 bg-blue-800 rounded-full overflow-hidden">
+            <div id="splash-bar" class="h-full bg-white rounded-full" style="width: 0%; transition: width 1.5s ease;"></div>
+        </div>
+    </div>
+
+    <!-- 主容器 -->
+    <div id="app" class="h-full flex flex-col hidden">
+        
+        <!-- 顶部栏 -->
+        <header id="header" class="bg-theme text-white px-4 pt-4 pb-3 shadow-lg z-40 transition-all">
+            <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                    <div class="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center">
+                        <i id="header-icon" class="fas fa-home text-sm"></i>
+                    </div>
+                    <div>
+                        <h1 id="header-title" class="text-lg font-bold leading-tight">首页</h1>
+                        <p id="header-sub" class="text-xs text-blue-100 opacity-80">五金店进销存系统</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <button onclick="app.showNotifications()" class="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center relative">
+                        <i class="fas fa-bell text-sm"></i>
+                        <span id="notif-badge" class="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-[10px] flex items-center justify-center hidden">3</span>
+                    </button>
+                    <button onclick="app.toggleProfile()" class="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center">
+                        <i class="fas fa-user text-sm"></i>
+                    </button>
+                </div>
+            </div>
+            <!-- 全局搜索 -->
+            <div class="relative">
+                <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-blue-200 text-sm"></i>
+                <input type="text" id="global-search" placeholder="搜索商品、单据、客户..." 
+                    class="w-full bg-white/20 border border-white/30 rounded-xl py-2 pl-9 pr-4 text-sm text-white placeholder-blue-200 focus:outline-none focus:bg-white/30 transition-all"
+                    oninput="app.globalSearch(this.value)">
+            </div>
+        </header>
+
+        <!-- 页面内容区 -->
+        <main id="main-content" class="flex-1 overflow-y-auto pb-20 scroll-smooth">
+            
+            <!-- 首页 Dashboard -->
+            <div id="page-home" class="page active px-4 pt-4 space-y-4">
+                <!-- 统计卡片 -->
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="bg-card rounded-2xl p-4 shadow-sm border border-gray-100">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-xs text-gray-500">今日销售额</span>
+                            <div class="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
+                                <i class="fas fa-arrow-trend-up text-green-600 text-xs"></i>
+                            </div>
+                        </div>
+                        <div class="text-xl font-bold text-gray-800" id="stat-today-sales">¥0.00</div>
+                        <div class="text-[10px] text-green-600 mt-1">+12.5% 较昨日</div>
+                    </div>
+                    <div class="bg-card rounded-2xl p-4 shadow-sm border border-gray-100">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-xs text-gray-500">库存预警</span>
+                            <div class="w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center">
+                                <i class="fas fa-triangle-exclamation text-red-600 text-xs"></i>
+                            </div>
+                        </div>
+                        <div class="text-xl font-bold text-gray-800" id="stat-warning">0</div>
+                        <div class="text-[10px] text-red-600 mt-1">需补货商品</div>
+                    </div>
+                    <div class="bg-card rounded-2xl p-4 shadow-sm border border-gray-100">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-xs text-gray-500">本月进货</span>
+                            <div class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                                <i class="fas fa-truck text-blue-600 text-xs"></i>
+                            </div>
+                        </div>
+                        <div class="text-xl font-bold text-gray-800" id="stat-month-purchase">¥0.00</div>
+                        <div class="text-[10px] text-gray-400 mt-1">共 <span id="stat-purchase-count">0</span> 单</div>
+                    </div>
+                    <div class="bg-card rounded-2xl p-4 shadow-sm border border-gray-100">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-xs text-gray-500">商品总数</span>
+                            <div class="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center">
+                                <i class="fas fa-boxes-stacked text-purple-600 text-xs"></i>
+                            </div>
+                        </div>
+                        <div class="text-xl font-bold text-gray-800" id="stat-total-products">0</div>
+                        <div class="text-[10px] text-gray-400 mt-1">SKU数量</div>
+                    </div>
+                </div>
+
+                <!-- 快捷操作 -->
+                <div class="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+                    <h3 class="text-sm font-bold mb-3 text-gray-700">快捷操作</h3>
+                    <div class="grid grid-cols-4 gap-3">
+                        <button onclick="app.openScan('in')" class="flex flex-col items-center gap-1 p-2 active:scale-95 transition-transform">
+                            <div class="w-12 h-12 bg-green-50 rounded-2xl flex items-center justify-center mb-1">
+                                <i class="fas fa-qrcode text-green-600 text-lg"></i>
+                            </div>
+                            <span class="text-[11px] text-gray-600">扫码入库</span>
+                        </button>
+                        <button onclick="app.openScan('out')" class="flex flex-col items-center gap-1 p-2 active:scale-95 transition-transform">
+                            <div class="w-12 h-12 bg-orange-50 rounded-2xl flex items-center justify-center mb-1">
+                                <i class="fas fa-barcode text-orange-600 text-lg"></i>
+                            </div>
+                            <span class="text-[11px] text-gray-600">扫码出库</span>
+                        </button>
+                        <button onclick="app.navigate('products')" class="flex flex-col items-center gap-1 p-2 active:scale-95 transition-transform">
+                            <div class="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center mb-1">
+                                <i class="fas fa-box-open text-blue-600 text-lg"></i>
+                            </div>
+                            <span class="text-[11px] text-gray-600">商品管理</span>
+                        </button>
+                        <button onclick="app.navigate('orders')" class="flex flex-col items-center gap-1 p-2 active:scale-95 transition-transform">
+                            <div class="w-12 h-12 bg-purple-50 rounded-2xl flex items-center justify-center mb-1">
+                                <i class="fas fa-file-invoice text-purple-600 text-lg"></i>
+                            </div>
+                            <span class="text-[11px] text-gray-600">单据查询</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 最近单据 -->
+                <div class="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="text-sm font-bold text-gray-700">最近单据</h3>
+                        <button onclick="app.navigate('orders')" class="text-xs text-blue-600">查看全部</button>
+                    </div>
+                    <div id="recent-orders" class="space-y-2">
+                        <!-- 动态生成 -->
+                    </div>
+                </div>
+
+                <!-- 库存预警 -->
+                <div class="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 mb-4">
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="text-sm font-bold text-gray-700">库存预警</h3>
+                        <button onclick="app.navigate('inventory')" class="text-xs text-blue-600">查看全部</button>
+                    </div>
+                    <div id="low-stock-list" class="space-y-2">
+                        <!-- 动态生成 -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- 扫码页面 -->
+            <div id="page-scan" class="page px-4 pt-4">
+                <div class="bg-black rounded-3xl overflow-hidden relative aspect-[3/4] shadow-2xl mb-4">
+                    <div class="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/60 z-10"></div>
+                    <!-- 模拟摄像头画面 -->
+                    <div class="absolute inset-0 bg-gray-900 flex items-center justify-center">
+                        <div class="text-center text-gray-500">
+                            <i class="fas fa-camera text-4xl mb-2"></i>
+                            <p class="text-sm">摄像头预览</p>
+                        </div>
+                    </div>
+                    <!-- 扫描框 -->
+                    <div class="absolute inset-0 flex items-center justify-center z-20">
+                        <div class="w-64 h-64 border-2 border-white/30 rounded-3xl relative">
+                            <div class="absolute top-0 left-0 w-6 h-6 border-t-4 border-l-4 border-green-400 rounded-tl-lg"></div>
+                            <div class="absolute top-0 right-0 w-6 h-6 border-t-4 border-r-4 border-green-400 rounded-tr-lg"></div>
+                            <div class="absolute bottom-0 left-0 w-6 h-6 border-b-4 border-l-4 border-green-400 rounded-bl-lg"></div>
+                            <div class="absolute bottom-0 right-0 w-6 h-6 border-b-4 border-r-4 border-green-400 rounded-br-lg"></div>
+                            <div class="scan-line"></div>
+                        </div>
+                    </div>
+                    <!-- 提示文字 -->
+                    <div class="absolute bottom-8 left-0 right-0 text-center z-30 text-white">
+                        <p class="text-sm font-medium mb-1">将条码/二维码放入框内</p>
+                        <p class="text-xs text-gray-300">自动扫描识别</p>
+                    </div>
+                </div>
+                
+                <!-- 手动输入 -->
+                <div class="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 mb-4">
+                    <label class="text-xs text-gray-500 mb-2 block">手动输入条码</label>
+                    <div class="flex gap-2">
+                        <input type="text" id="manual-barcode" placeholder="输入商品条码..." 
+                            class="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500">
+                        <button onclick="app.manualScan()" class="bg-theme text-white px-6 rounded-xl font-medium active:scale-95 transition-transform">
+                            确认
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 最近扫描记录 -->
+                <div class="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 mb-4">
+                    <h3 class="text-sm font-bold mb-3 text-gray-700">最近扫描</h3>
+                    <div id="scan-history" class="space-y-2">
+                        <div class="text-center text-gray-400 text-xs py-4">暂无扫描记录</div>
+                    </div>
+                </div>
+
+                <button onclick="app.closeScan()" class="w-full bg-gray-200 text-gray-700 py-3 rounded-xl font-medium mb-6 active:scale-95 transition-transform">
+                    关闭扫描
+                </button>
+            </div>
+
+            <!-- 商品管理 -->
+            <div id="page-products" class="page px-4 pt-4 space-y-4">
+                <!-- 分类筛选 -->
+                <div class="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+                    <button onclick="app.filterProducts('all')" class="cat-btn active px-4 py-2 bg-theme text-white rounded-full text-xs font-medium whitespace-nowrap transition-all">全部</button>
+                    <button onclick="app.filterProducts('tool')" class="cat-btn px-4 py-2 bg-gray-100 text-gray-600 rounded-full text-xs font-medium whitespace-nowrap transition-all">工具</button>
+                    <button onclick="app.filterProducts('electrical')" class="cat-btn px-4 py-2 bg-gray-100 text-gray-600 rounded-full text-xs font-medium whitespace-nowrap transition-all">电气</button>
+                    <button onclick="app.filterProducts('plumbing')" class="cat-btn px-4 py-2 bg-gray-100 text-gray-600 rounded-full text-xs font-medium whitespace-nowrap transition-all">水暖</button>
+                    <button onclick="app.filterProducts('hardware')" class="cat-btn px-4 py-2 bg-gray-100 text-gray-600 rounded-full text-xs font-medium whitespace-nowrap transition-all">五金配件</button>
+                </div>
+
+                <!-- 商品列表 -->
+                <div id="product-list" class="space-y-3 pb-4">
+                    <!-- 动态生成 -->
+                </div>
+
+                <!-- 添加按钮 -->
+                <button onclick="app.showProductModal()" class="fixed bottom-24 right-4 w-14 h-14 bg-theme text-white rounded-full shadow-lg flex items-center justify-center active:scale-90 transition-transform z-30">
+                    <i class="fas fa-plus text-xl"></i>
+                </button>
+            </div>
+
+            <!-- 库存管理 -->
+            <div id="page-inventory" class="page px-4 pt-4 space-y-4">
+                <div class="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-sm font-bold text-gray-700">库存总览</h3>
+                        <button onclick="app.refreshInventory()" class="text-xs text-blue-600"><i class="fas fa-rotate-right mr-1"></i>刷新</button>
+                    </div>
+                    <div class="grid grid-cols-3 gap-4 text-center">
+                        <div>
+                            <div class="text-lg font-bold text-gray-800" id="inv-total-sku">0</div>
+                            <div class="text-[10px] text-gray-500">SKU总数</div>
+                        </div>
+                        <div>
+                            <div class="text-lg font-bold text-blue-600" id="inv-total-qty">0</div>
+                            <div class="text-[10px] text-gray-500">总库存量</div>
+                        </div>
+                        <div>
+                            <div class="text-lg font-bold text-orange-600" id="inv-total-value">¥0</div>
+                            <div class="text-[10px] text-gray-500">库存总值</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                    <div class="p-4 border-b border-gray-100 flex items-center justify-between">
+                        <h3 class="text-sm font-bold text-gray-700">库存明细</h3>
+                        <div class="flex gap-2">
+                            <button onclick="app.sortInventory('qty')" class="text-xs bg-gray-100 px-2 py-1 rounded">按数量</button>
+                            <button onclick="app.sortInventory('value')" class="text-xs bg-gray-100 px-2 py-1 rounded">按金额</button>
+                        </div>
+                    </div>
+                    <div class="table-scroll">
+                        <table class="w-full text-xs">
+                            <thead class="bg-gray-50 text-gray-500">
+                                <tr>
+                                    <th class="text-left p-3 font-medium">商品名称</th>
+                                    <th class="text-right p-3 font-medium">规格</th>
+                                    <th class="text-right p-3 font-medium">库存</th>
+                                    <th class="text-right p-3 font-medium">预警值</th>
+                                    <th class="text-right p-3 font-medium">状态</th>
+                                </tr>
+                            </thead>
+                            <tbody id="inventory-table" class="divide-y divide-gray-100">
+                                <!-- 动态生成 -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 单据管理 -->
+            <div id="page-orders" class="page px-4 pt-4 space-y-4">
+                <!-- 单据类型切换 -->
+                <div class="bg-gray-100 p-1 rounded-xl flex">
+                    <button onclick="app.switchOrderType('purchase')" id="tab-purchase" class="flex-1 py-2 rounded-lg text-xs font-medium bg-white text-gray-800 shadow-sm transition-all">进货单</button>
+                    <button onclick="app.switchOrderType('sales')" id="tab-sales" class="flex-1 py-2 rounded-lg text-xs font-medium text-gray-500 transition-all">销售单</button>
+                    <button onclick="app.switchOrderType('return')" id="tab-return" class="flex-1 py-2 rounded-lg text-xs font-medium text-gray-500 transition-all">退货单</button>
+                </div>
+
+                <!-- 日期筛选 -->
+                <div class="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+                    <button onclick="app.filterOrders('today')" class="order-filter active px-3 py-1.5 bg-theme text-white rounded-lg text-xs whitespace-nowrap">今日</button>
+                    <button onclick="app.filterOrders('week')" class="order-filter px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs whitespace-nowrap">本周</button>
+                    <button onclick="app.filterOrders('month')" class="order-filter px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs whitespace-nowrap">本月</button>
+                    <button onclick="app.filterOrders('all')" class="order-filter px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs whitespace-nowrap">全部</button>
+                </div>
+
+                <div id="order-list" class="space-y-3 pb-4">
+                    <!-- 动态生成 -->
+                </div>
+
+                <button onclick="app.showOrderModal()" class="fixed bottom-24 right-4 w-14 h-14 bg-theme text-white rounded-full shadow-lg flex items-center justify-center active:scale-90 transition-transform z-30">
+                    <i class="fas fa-file-circle-plus text-xl"></i>
+                </button>
+            </div>
+
+            <!-- 统计报表 -->
+            <div id="page-stats" class="page px-4 pt-4 space-y-4">
+                <!-- 时间选择 -->
+                <div class="flex gap-2">
+                    <button onclick="app.setStatsPeriod('week')" class="stats-period flex-1 py-2 bg-theme text-white rounded-xl text-xs font-medium active:scale-95 transition-transform">近7天</button>
+                    <button onclick="app.setStatsPeriod('month')" class="stats-period flex-1 py-2 bg-gray-100 text-gray-600 rounded-xl text-xs font-medium active:scale-95 transition-transform">本月</button>
+                    <button onclick="app.setStatsPeriod('quarter')" class="stats-period flex-1 py-2 bg-gray-100 text-gray-600 rounded-xl text-xs font-medium active:scale-95 transition-transform">本季</button>
+                </div>
+
+                <!-- 销售趋势图（简化版） -->
+                <div class="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+                    <h3 class="text-sm font-bold mb-4 text-gray-700">销售趋势</h3>
+                    <div class="h-40 flex items-end justify-between gap-2 px-2" id="sales-chart">
+                        <!-- 动态生成柱状图 -->
+                    </div>
+                    <div class="flex justify-between mt-2 text-[10px] text-gray-400 px-2" id="chart-labels">
+                    </div>
+                </div>
+
+                <!-- 品类占比 -->
+                <div class="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+                    <h3 class="text-sm font-bold mb-4 text-gray-700">品类销售占比</h3>
+                    <div class="space-y-3" id="category-stats">
+                        <!-- 动态生成 -->
+                    </div>
+                </div>
+
+                <!-- 热销排行 -->
+                <div class="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 mb-4">
+                    <h3 class="text-sm font-bold mb-3 text-gray-700">热销商品 TOP5</h3>
+                    <div class="space-y-2" id="top-products">
+                        <!-- 动态生成 -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- 设置页面 -->
+            <div id="page-settings" class="page px-4 pt-4 space-y-4">
+                <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                    <div class="p-4 border-b border-gray-100 flex items-center gap-3">
+                        <div class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+                            <i class="fas fa-store text-blue-600"></i>
+                        </div>
+                        <div>
+                            <div class="font-bold text-gray-800">五金建材总店</div>
+                            <div class="text-xs text-gray-500">管理员 | 138****8888</div>
+                        </div>
+                    </div>
+                    <div class="divide-y divide-gray-100">
+                        <button onclick="app.showSetting('store')" class="w-full flex items-center justify-between p-4 active:bg-gray-50">
+                            <div class="flex items-center gap-3">
+                                <i class="fas fa-shop text-gray-400 w-5"></i>
+                                <span class="text-sm">店铺信息</span>
+                            </div>
+                            <i class="fas fa-chevron-right text-gray-300 text-xs"></i>
+                        </button>
+                        <button onclick="app.showSetting('staff')" class="w-full flex items-center justify-between p-4 active:bg-gray-50">
+                            <div class="flex items-center gap-3">
+                                <i class="fas fa-users text-gray-400 w-5"></i>
+                                <span class="text-sm">员工管理</span>
+                            </div>
+                            <i class="fas fa-chevron-right text-gray-300 text-xs"></i>
+                        </button>
+                        <button onclick="app.showSetting('print')" class="w-full flex items-center justify-between p-4 active:bg-gray-50">
+                            <div class="flex items-center gap-3">
+                                <i class="fas fa-print text-gray-400 w-5"></i>
+                                <span class="text-sm">打印设置</span>
+                            </div>
+                            <i class="fas fa-chevron-right text-gray-300 text-xs"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                    <div class="divide-y divide-gray-100">
+                        <button onclick="app.showSetting('backup')" class="w-full flex items-center justify-between p-4 active:bg-gray-50">
+                            <div class="flex items-center gap-3">
+                                <i class="fas fa-cloud-arrow-up text-gray-400 w-5"></i>
+                                <span class="text-sm">数据备份</span>
+                            </div>
+                            <span class="text-xs text-gray-400">上次: 今天 09:30</span>
+                        </button>
+                        <button onclick="app.showSetting('clear')" class="w-full flex items-center justify-between p-4 active:bg-gray-50">
+                            <div class="flex items-center gap-3">
+                                <i class="fas fa-trash-can text-red-400 w-5"></i>
+                                <span class="text-sm text-red-600">清空数据</span>
+                            </div>
+                            <i class="fas fa-chevron-right text-gray-300 text-xs"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="text-center text-xs text-gray-400 py-4">
+                    <p>五金进销存移动版 v2.0.1</p>
+                    <p class="mt-1"> 五金软件科技</p>
+                </div>
+            </div>
+        </main>
+
+        <!-- 底部导航 -->
+        <nav class="bg-white border-t border-gray-200 safe-bottom fixed bottom-0 w-full z-40 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+            <div class="flex items-center justify-around py-2">
+                <button onclick="app.navigate('home')" class="nav-btn active flex flex-col items-center gap-0.5 px-4 py-1" data-page="home">
+                    <i class="fas fa-house text-lg mb-0.5"></i>
+                    <span class="text-[10px]">首页</span>
+                </button>
+                <button onclick="app.navigate('products')" class="nav-btn flex flex-col items-center gap-0.5 px-4 py-1 text-gray-400" data-page="products">
+                    <i class="fas fa-boxes-stacked text-lg mb-0.5"></i>
+                    <span class="text-[10px]">商品</span>
+                </button>
+                <button onclick="app.openScan('in')" class="nav-btn flex flex-col items-center -mt-6" data-page="scan">
+                    <div class="w-14 h-14 bg-theme rounded-full flex items-center justify-center shadow-lg border-4 border-gray-50">
+                        <i class="fas fa-expand text-white text-xl"></i>
+                    </div>
+                    <span class="text-[10px] text-gray-400 mt-1">扫码</span>
+                </button>
+                <button onclick="app.navigate('orders')" class="nav-btn flex flex-col items-center gap-0.5 px-4 py-1 text-gray-400" data-page="orders">
+                    <i class="fas fa-file-lines text-lg mb-0.5"></i>
+                    <span class="text-[10px]">单据</span>
+                </button>
+                <button onclick="app.navigate('settings')" class="nav-btn flex flex-col items-center gap-0.5 px-4 py-1 text-gray-400" data-page="settings">
+                    <i class="fas fa-gear text-lg mb-0.5"></i>
+                    <span class="text-[10px]">设置</span>
+                </button>
+            </div>
+        </nav>
+
+        <!-- 模态框遮罩 -->
+        <div id="modal-overlay" class="fixed inset-0 bg-black/50 z-50 hidden backdrop-blur-sm transition-opacity" onclick="app.closeModal()"></div>
+
+        <!-- 商品详情/编辑模态框 -->
+        <div id="modal-product" class="fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl z-50 hidden modal-enter max-h-[85vh] overflow-y-auto">
+            <div class="sticky top-0 bg-white rounded-t-3xl border-b border-gray-100 p-4 flex items-center justify-between z-10">
+                <h3 class="font-bold text-lg" id="product-modal-title">添加商品</h3>
+                <button onclick="app.closeModal()" class="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center">
+                    <i class="fas fa-xmark text-gray-600"></i>
+                </button>
+            </div>
+            <div class="p-4 space-y-4">
+                <div>
+                    <label class="text-xs text-gray-500 mb-1 block">商品条码 <span class="text-red-500">*</span></label>
+                    <div class="flex gap-2">
+                        <input type="text" id="prod-barcode" class="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500" placeholder="扫描或输入条码">
+                        <button onclick="app.scanForProduct()" class="bg-gray-100 w-12 rounded-xl flex items-center justify-center active:bg-gray-200">
+                            <i class="fas fa-barcode text-gray-600"></i>
+                        </button>
+                    </div>
+                </div>
+                <div>
+                    <label class="text-xs text-gray-500 mb-1 block">商品名称 <span class="text-red-500">*</span></label>
+                    <input type="text" id="prod-name" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500" placeholder="如：不锈钢螺丝">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="text-xs text-gray-500 mb-1 block">分类</label>
+                        <select id="prod-category" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500">
+                            <option value="tool">工具</option>
+                            <option value="electrical">电气</option>
+                            <option value="plumbing">水暖</option>
+                            <option value="hardware">五金配件</option>
+                            <option value="paint">油漆涂料</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-xs text-gray-500 mb-1 block">规格型号</label>
+                        <input type="text" id="prod-spec" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500" placeholder="如：M8×50">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="text-xs text-gray-500 mb-1 block">单位</label>
+                        <select id="prod-unit" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500">
+                            <option value="个">个</option>
+                            <option value="包">包</option>
+                            <option value="箱">箱</option>
+                            <option value="公斤">公斤</option>
+                            <option value="米">米</option>
+                            <option value="卷">卷</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-xs text-gray-500 mb-1 block">预警库存</label>
+                        <input type="number" id="prod-min-stock" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500" placeholder="10" value="10">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="text-xs text-gray-500 mb-1 block">进货价 (¥)</label>
+                        <input type="number" id="prod-cost" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500" placeholder="0.00" step="0.01">
+                    </div>
+                    <div>
+                        <label class="text-xs text-gray-500 mb-1 block">销售价 (¥)</label>
+                        <input type="number" id="prod-price" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500" placeholder="0.00" step="0.01">
+                    </div>
+                </div>
+                <div>
+                    <label class="text-xs text-gray-500 mb-1 block">备注</label>
+                    <textarea id="prod-remark" rows="2" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500 resize-none" placeholder="可选填"></textarea>
+                </div>
+                <div class="flex gap-3 pt-2 pb-4">
+                    <button onclick="app.closeModal()" class="flex-1 bg-gray-100 text-gray-700 py-3 rounded-xl font-medium active:scale-95 transition-transform">取消</button>
+                    <button onclick="app.saveProduct()" class="flex-1 bg-theme text-white py-3 rounded-xl font-medium active:scale-95 transition-transform shadow-lg shadow-blue-500/30">保存</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 单据模态框 -->
+        <div id="modal-order" class="fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl z-50 hidden modal-enter max-h-[90vh] overflow-y-auto">
+            <div class="sticky top-0 bg-white rounded-t-3xl border-b border-gray-100 p-4 flex items-center justify-between z-10">
+                <h3 class="font-bold text-lg" id="order-modal-title">新建进货单</h3>
+                <button onclick="app.closeModal()" class="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center">
+                    <i class="fas fa-xmark text-gray-600"></i>
+                </button>
+            </div>
+            <div class="p-4 space-y-4">
+                <!-- 单据头部信息 -->
+                <div class="bg-gray-50 rounded-xl p-3 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs text-gray-500">单据类型</span>
+                        <span class="text-xs font-bold px-2 py-1 bg-blue-100 text-blue-700 rounded" id="order-type-label">进货单</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs text-gray-500">单号</span>
+                        <span class="text-xs font-mono text-gray-700" id="order-no">CG20240522001</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs text-gray-500">日期</span>
+                        <span class="text-xs text-gray-700" id="order-date">2024-05-22</span>
+                    </div>
+                </div>
+
+                <!-- 往来单位 -->
+                <div>
+                    <label class="text-xs text-gray-500 mb-1 block" id="partner-label">供应商</label>
+                    <div class="flex gap-2">
+                        <select id="order-partner" class="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500">
+                            <!-- 动态生成 -->
+                        </select>
+                        <button onclick="app.quickAddPartner()" class="bg-gray-100 w-12 rounded-xl flex items-center justify-center active:bg-gray-200">
+                            <i class="fas fa-plus text-gray-600"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 商品明细 -->
+                <div>
+                    <div class="flex items-center justify-between mb-2">
+                        <label class="text-xs text-gray-500">商品明细</label>
+                        <button onclick="app.addOrderItem()" class="text-xs text-blue-600 font-medium active:opacity-70">
+                            <i class="fas fa-plus-circle mr-1"></i>添加商品
+                        </button>
+                    </div>
+                    <div id="order-items" class="space-y-2">
+                        <!-- 动态生成 -->
+                    </div>
+                </div>
+
+                <!-- 合计 -->
+                <div class="bg-blue-50 rounded-xl p-4 space-y-2">
+                    <div class="flex justify-between text-sm">
+                        <span class="text-gray-600">数量合计</span>
+                        <span class="font-bold text-gray-800" id="order-total-qty">0</span>
+                    </div>
+                    <div class="flex justify-between text-sm">
+                        <span class="text-gray-600">金额合计</span>
+                        <span class="font-bold text-blue-700 text-lg" id="order-total-amount">¥0.00</span>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="text-xs text-gray-500 mb-1 block">备注</label>
+                    <textarea id="order-remark" rows="2" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500 resize-none" placeholder="可选填"></textarea>
+                </div>
+
+                <div class="flex gap-3 pt-2 pb-4">
+                    <button onclick="app.closeModal()" class="flex-1 bg-gray-100 text-gray-700 py-3 rounded-xl font-medium active:scale-95 transition-transform">取消</button>
+                    <button onclick="app.saveOrder()" class="flex-1 bg-theme text-white py-3 rounded-xl font-medium active:scale-95 transition-transform shadow-lg shadow-blue-500/30">保存单据</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 入库/出库操作模态框（扫码后） -->
+        <div id="modal-stock" class="fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl z-50 hidden modal-enter">
+            <div class="p-4 space-y-4">
+                <div class="text-center mb-2">
+                    <div class="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                        <i class="fas fa-check text-green-600 text-xl"></i>
+                    </div>
+                    <h3 class="font-bold text-lg" id="stock-action-title">入库确认</h3>
+                    <p class="text-sm text-gray-500" id="stock-barcode-display">条码: 6931234567890</p>
+                </div>
+                
+                <div class="bg-gray-50 rounded-xl p-3">
+                    <div class="font-bold text-gray-800 mb-1" id="stock-product-name">不锈钢膨胀螺丝 M8×80</div>
+                    <div class="text-xs text-gray-500" id="stock-product-spec">规格: M8×80 | 当前库存: 150个</div>
+                </div>
+
+                <div>
+                    <label class="text-xs text-gray-500 mb-1 block">操作数量</label>
+                    <div class="flex items-center justify-center gap-4">
+                        <button onclick="app.adjustStockQty(-1)" class="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center active:bg-gray-200 text-xl font-bold text-gray-600">-</button>
+                        <input type="number" id="stock-qty" value="1" class="w-24 text-center text-2xl font-bold bg-transparent border-b-2 border-blue-500 focus:outline-none">
+                        <button onclick="app.adjustStockQty(1)" class="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center active:bg-gray-200 text-xl font-bold text-gray-600">+</button>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="text-xs text-gray-500 mb-1 block">单价 (¥)</label>
+                    <input type="number" id="stock-price" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500 text-center text-lg font-bold" step="0.01">
+                </div>
+
+                <div class="flex gap-3 pt-2 pb-4">
+                    <button onclick="app.closeModal()" class="flex-1 bg-gray-100 text-gray-700 py-3 rounded-xl font-medium active:scale-95 transition-transform">取消</button>
+                    <button onclick="app.confirmStock()" class="flex-1 bg-green-600 text-white py-3 rounded-xl font-medium active:scale-95 transition-transform shadow-lg shadow-green-500/30">确认入库</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 提示消息 -->
+        <div id="toast" class="fixed top-20 left-1/2 -translate-x-1/2 bg-gray-800 text-white px-6 py-3 rounded-full text-sm shadow-xl z-50 hidden transition-all transform translate-y-[-20px] opacity-0">
+            <span id="toast-msg">操作成功</span>
+        </div>
+    </div>
+
+    <script>
+        // 五金进销存APP核心逻辑
+        const app = {
+            data: {
+                products: [],
+                inventory: {},
+                orders: [],
+                customers: [],
+                suppliers: [],
+                settings: {
+                    storeName: '五金建材总店',
+                    lowStockThreshold: 10
+                },
+                currentPage: 'home',
+                scanMode: 'in', // 'in' 入库, 'out' 出库
+                currentOrderType: 'purchase',
+                currentOrderFilter: 'today',
+                editingProduct: null,
+                tempOrderItems: [],
+                scanHistory: []
+            },
+
+            init() {
+                this.loadData();
+                this.initDemoData();
+                this.setupEventListeners();
+                
+                // 启动页动画
+                setTimeout(() => {
+                    document.getElementById('splash-bar').style.width = '100%';
+                }, 100);
+                
+                setTimeout(() => {
+                    document.getElementById('splash').style.opacity = '0';
+                    document.getElementById('splash').style.transition = 'opacity 0.5s';
+                    setTimeout(() => {
+                        document.getElementById('splash').classList.add('hidden');
+                        document.getElementById('app').classList.remove('hidden');
+                        this.refreshAll();
+                    }, 500);
+                }, 1800);
+            },
+
+            initDemoData() {
+                if (this.data.products.length > 0) return;
+                
+                const demoProducts = [
+                    { id: '1', barcode: '6931234567890', name: '不锈钢膨胀螺丝', category: 'hardware', spec: 'M8×80', unit: '个', cost: 1.50, price: 3.00, minStock: 100, remark: '304不锈钢' },
+                    { id: '2', barcode: '6931234567891', name: 'PVC给水管', category: 'plumbing', spec: 'DN25×4米', unit: '根', cost: 12.00, price: 25.00, minStock: 50, remark: '国标' },
+                    { id: '3', barcode: '6931234567892', name: '铜芯电线', category: 'electrical', spec: 'BV2.5平方', unit: '卷', cost: 85.00, price: 150.00, minStock: 20, remark: '100米/卷' },
+                    { id: '4', barcode: '6931234567893', name: '电钻冲击钻', category: 'tool', spec: '720W', unit: '台', cost: 180.00, price: 350.00, minStock: 5, remark: '多功能' },
+                    { id: '5', barcode: '6931234567894', name: '防水胶带', category: 'hardware', spec: '5cm×10米', unit: '卷', cost: 3.50, price: 8.00, minStock: 30, remark: '丁基胶' },
+                    { id: '6', barcode: '6931234567895', name: '角磨机', category: 'tool', spec: '100mm', unit: '台', cost: 120.00, price: 220.00, minStock: 8, remark: '含防护罩' },
+                    { id: '7', barcode: '6931234567896', name: '漏电保护器', category: 'electrical', spec: '2P 63A', unit: '个', cost: 45.00, price: 85.00, minStock: 15, remark: '家用型' },
+                    { id: '8', barcode: '6931234567897', name: '水龙头', category: 'plumbing', spec: '全铜单冷', unit: '个', cost: 28.00, price: 55.00, minStock: 20, remark: '陶瓷阀芯' }
+                ];
+                
+                this.data.products = demoProducts;
+                this.data.inventory = {
+                    '1': { qty: 150, warehouse: '主仓库' },
+                    '2': { qty: 45, warehouse: '主仓库' },
+                    '3': { qty: 18, warehouse: '主仓库' },
+                    '4': { qty: 8, warehouse: '主仓库' },
+                    '5': { qty: 120, warehouse: '主仓库' },
+                    '6': { qty: 12, warehouse: '主仓库' },
+                    '7': { qty: 22, warehouse: '主仓库' },
+                    '8': { qty: 30, warehouse: '主仓库' }
+                };
+                
+                this.data.customers = [
+                    { id: 'c1', name: '张工装修队', phone: '13800138000', address: '本市' },
+                    { id: 'c2', name: '李师傅', phone: '13900139000', address: '本市' },
+                    { id: 'c3', name: '王建材店', phone: '13700137000', address: '邻市' }
+                ];
+                
+                this.data.suppliers = [
+                    { id: 's1', name: '浙江五金批发部', phone: '0571-88888888', contact: '赵经理' },
+                    { id: 's2', name: '广东电气总汇', phone: '0755-66666666', contact: '钱经理' },
+                    { id: 's3', name: '本地建材市场', phone: '0510-77777777', contact: '孙经理' }
+                ];
+                
+                // 生成演示订单
+                const today = new Date().toISOString().split('T')[0];
+                const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+                
+                this.data.orders = [
+                    { id: 'CG20240522001', type: 'purchase', date: today, partnerId: 's1', partnerName: '浙江五金批发部', items: [{productId:'1', name:'不锈钢膨胀螺丝', spec:'M8×80', qty:500, price:1.50, unit:'个'}], totalQty: 500, totalAmount: 750.00, status: 'completed', remark: '常规补货' },
+                    { id: 'XS20240522001', type: 'sales', date: today, partnerId: 'c1', partnerName: '张工装修队', items: [{productId:'1', name:'不锈钢膨胀螺丝', spec:'M8×80', qty:50, price:3.00, unit:'个'}, {productId:'4', name:'电钻冲击钻', spec:'720W', qty:1, price:350.00, unit:'台'}], totalQty: 51, totalAmount: 500.00, status: 'completed', remark: '' },
+                    { id: 'CG20240521001', type: 'purchase', date: yesterday, partnerId: 's2', partnerName: '广东电气总汇', items: [{productId:'3', name:'铜芯电线', spec:'BV2.5平方', qty:30, price:85.00, unit:'卷'}], totalQty: 30, totalAmount: 2550.00, status: 'completed', remark: '' },
+                    { id: 'XS20240521001', type: 'sales', date: yesterday, partnerId: 'c2', partnerName: '李师傅', items: [{productId:'2', name:'PVC给水管', spec:'DN25×4米', qty:10, price:25.00, unit:'根'}], totalQty: 10, totalAmount: 250.00, status: 'completed', remark: '' }
+                ];
+                
+                this.saveData();
+            },
+
+            setupEventListeners() {
+                // 防止双击缩放
+                let lastTouchEnd = 0;
+                document.addEventListener('touchend', (e) => {
+                    const now = Date.now();
+                    if (now - lastTouchEnd <= 300) e.preventDefault();
+                    lastTouchEnd = now;
+                }, false);
+            },
+
+            loadData() {
+                const saved = localStorage.getItem('hardware_erp_data');
+                if (saved) {
+                    const parsed = JSON.parse(saved);
+                    Object.assign(this.data, parsed);
+                }
+            },
+
+            saveData() {
+                localStorage.setItem('hardware_erp_data', JSON.stringify(this.data));
+            },
+
+            navigate(page) {
+                // 隐藏所有页面
+                document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+                document.getElementById(`page-${page}`).classList.add('active');
+                
+                // 更新导航状态
+                document.querySelectorAll('.nav-btn').forEach(btn => {
+                    if (btn.dataset.page === page) {
+                        btn.classList.add('active', 'text-blue-600');
+                        btn.classList.remove('text-gray-400');
+                    } else {
+                        btn.classList.remove('active', 'text-blue-600');
+                        btn.classList.add('text-gray-400');
+                    }
+                });
+                
+                this.data.currentPage = page;
+                this.updateHeader(page);
+                this.refreshPage(page);
+                
+                // 滚动到顶部
+                document.getElementById('main-content').scrollTop = 0;
+            },
+
+            updateHeader(page) {
+                const titles = {
+                    home: { title: '首页', sub: '五金店进销存系统', icon: 'fa-house' },
+                    scan: { title: '扫码', sub: '扫描商品条码', icon: 'fa-expand' },
+                    products: { title: '商品管理', sub: '共 ' + this.data.products.length + ' 款商品', icon: 'fa-boxes-stacked' },
+                    inventory: { title: '库存管理', sub: '实时库存查询', icon: 'fa-warehouse' },
+                    orders: { title: '单据管理', sub: '进货/销售/退货', icon: 'fa-file-lines' },
+                    stats: { title: '统计报表', sub: '经营数据分析', icon: 'fa-chart-pie' },
+                    settings: { title: '系统设置', sub: '店铺与参数配置', icon: 'fa-gear' }
+                };
+                
+                const config = titles[page] || titles.home;
+                document.getElementById('header-title').textContent = config.title;
+                document.getElementById('header-sub').textContent = config.sub;
+                document.getElementById('header-icon').className = `fas ${config.icon} text-sm`;
+            },
+
+            refreshPage(page) {
+                switch(page) {
+                    case 'home': this.renderHome(); break;
+                    case 'products': this.renderProducts(); break;
+                    case 'inventory': this.renderInventory(); break;
+                    case 'orders': this.renderOrders(); break;
+                    case 'stats': this.renderStats(); break;
+                }
+            },
+
+            refreshAll() {
+                this.renderHome();
+                this.renderProducts();
+                this.renderInventory();
+                this.renderOrders();
+                this.renderStats();
+            },
+
+            // 首页渲染
+            renderHome() {
+                // 今日销售
+                const today = new Date().toISOString().split('T')[0];
+                const todaySales = this.data.orders
+                    .filter(o => o.type === 'sales' && o.date === today)
+                    .reduce((sum, o) => sum + o.totalAmount, 0);
+                document.getElementById('stat-today-sales').textContent = '¥' + todaySales.toFixed(2);
+                
+                // 库存预警
+                let warningCount = 0;
+                this.data.products.forEach(p => {
+                    const inv = this.data.inventory[p.id];
+                    if (inv && inv.qty <= p.minStock) warningCount++;
+                });
+                document.getElementById('stat-warning').textContent = warningCount;
+                
+                // 本月进货
+                const monthStr = today.substring(0, 7);
+                const monthPurchases = this.data.orders.filter(o => o.type === 'purchase' && o.date.startsWith(monthStr));
+                const monthPurchaseAmount = monthPurchases.reduce((sum, o) => sum + o.totalAmount, 0);
+                document.getElementById('stat-month-purchase').textContent = '¥' + monthPurchaseAmount.toFixed(2);
+                document.getElementById('stat-purchase-count').textContent = monthPurchases.length;
+                
+                // 商品总数
+                document.getElementById('stat-total-products').textContent = this.data.products.length;
+                
+                // 最近单据
+                const recentOrders = [...this.data.orders].sort((a, b) => b.id.localeCompare(a.id)).slice(0, 5);
+                const recentHtml = recentOrders.map(o => {
+                    const typeColors = { purchase: 'bg-blue-100 text-blue-700', sales: 'bg-green-100 text-green-700', return: 'bg-orange-100 text-orange-700' };
+                    const typeLabels = { purchase: '进', sales: '销', return: '退' };
+                    return `
+                        <div class="flex items-center justify-between p-3 bg-gray-50 rounded-xl swipe-card" onclick="app.viewOrder('${o.id}')">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 ${typeColors[o.type]} rounded-lg flex items-center justify-center font-bold text-sm">
+                                    ${typeLabels[o.type]}
+                                </div>
+                                <div>
+                                    <div class="text-sm font-medium text-gray-800">${o.partnerName}</div>
+                                    <div class="text-[10px] text-gray-500">${o.date} | 共${o.totalQty}件</div>
+                                </div>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-sm font-bold text-gray-800">¥${o.totalAmount.toFixed(2)}</div>
+                                <div class="text-[10px] text-green-600">${o.status === 'completed' ? '已完成' : '待处理'}</div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+                document.getElementById('recent-orders').innerHTML = recentHtml || '<div class="text-center text-gray-400 text-xs py-4">暂无单据</div>';
+                
+                // 库存预警列表
+                const lowStock = this.data.products
+                    .map(p => ({...p, inv: this.data.inventory[p.id]}))
+                    .filter(p => p.inv && p.inv.qty <= p.minStock)
+                    .sort((a, b) => a.inv.qty - b.inv.qty);
+                
+                const warningHtml = lowStock.slice(0, 5).map(p => `
+                    <div class="flex items-center justify-between p-3 bg-red-50 rounded-xl border border-red-100">
+                        <div>
+                            <div class="text-sm font-medium text-gray-800">${p.name}</div>
+                            <div class="text-[10px] text-gray-500">${p.spec} | 预警值: ${p.minStock}${p.unit}</div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-lg font-bold text-red-600">${p.inv.qty}</div>
+                            <div class="text-[10px] text-red-400">${p.unit}</div>
+                        </div>
+                    </div>
+                `).join('');
+                document.getElementById('low-stock-list').innerHTML = warningHtml || '<div class="text-center text-gray-400 text-xs py-4">库存充足</div>';
+            },
+
+            // 扫码功能
+            openScan(mode) {
+                this.data.scanMode = mode;
+                this.navigate('scan');
+                document.getElementById('header-title').textContent = mode === 'in' ? '扫码入库' : '扫码出库';
+                
+                // 模拟扫描历史
+                this.renderScanHistory();
+            },
+
+            closeScan() {
+                this.navigate('home');
+            },
+
+            manualScan() {
+                const barcode = document.getElementById('manual-barcode').value.trim();
+                if (!barcode) {
+                    this.showToast('请输入条码');
+                    return;
+                }
+                this.processScan(barcode);
+            },
+
+            processScan(barcode) {
+                const product = this.data.products.find(p => p.barcode === barcode);
+                if (!product) {
+                    this.showToast('未找到该商品，请先添加');
+                    setTimeout(() => this.showProductModal(barcode), 1000);
+                    return;
+                }
+                
+                // 记录扫描历史
+                this.data.scanHistory.unshift({ barcode, name: product.name, time: new Date().toLocaleTimeString(), mode: this.data.scanMode });
+                if (this.data.scanHistory.length > 10) this.data.scanHistory.pop();
+                this.renderScanHistory();
+                
+                // 显示入库/出库确认框
+                this.showStockModal(product);
+            },
+
+            renderScanHistory() {
+                const html = this.data.scanHistory.map(h => `
+                    <div class="flex items-center justify-between p-2 bg-gray-50 rounded-lg text-xs">
+                        <div>
+                            <div class="font-medium text-gray-800">${h.name}</div>
+                            <div class="text-gray-500">${h.barcode}</div>
+                        </div>
+                        <div class="text-right">
+                            <span class="px-2 py-0.5 rounded ${h.mode === 'in' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'} text-[10px]">
+                                ${h.mode === 'in' ? '入库' : '出库'}
+                            </span>
+                            <div class="text-gray-400 mt-0.5">${h.time}</div>
+                        </div>
+                    </div>
+                `).join('');
+                document.getElementById('scan-history').innerHTML = html || '<div class="text-center text-gray-400 text-xs py-4">暂无扫描记录</div>';
+            },
+
+            showStockModal(product) {
+                const inv = this.data.inventory[product.id] || { qty: 0 };
+                document.getElementById('stock-action-title').textContent = this.data.scanMode === 'in' ? '入库确认' : '出库确认';
+                document.getElementById('stock-barcode-display').textContent = '条码: ' + product.barcode;
+                document.getElementById('stock-product-name').textContent = product.name + ' ' + product.spec;
+                document.getElementById('stock-product-spec').textContent = `当前库存: ${inv.qty}${product.unit} | 仓库: 主仓库`;
+                document.getElementById('stock-qty').value = 1;
+                document.getElementById('stock-price').value = this.data.scanMode === 'in' ? product.cost : product.price;
+                
+                this.data.currentStockProduct = product;
+                document.getElementById('modal-overlay').classList.remove('hidden');
+                document.getElementById('modal-stock').classList.remove('hidden');
+            },
+
+            adjustStockQty(delta) {
+                const input = document.getElementById('stock-qty');
+                let val = parseInt(input.value) || 0;
+                val = Math.max(1, val + delta);
+                input.value = val;
+            },
+
+            confirmStock() {
+                const product = this.data.currentStockProduct;
+                const qty = parseInt(document.getElementById('stock-qty').value) || 0;
+                const price = parseFloat(document.getElementById('stock-price').value) || 0;
+                
+                if (!product || qty <= 0) {
+                    this.showToast('请输入有效数量');
+                    return;
+                }
+                
+                // 更新库存
+                if (!this.data.inventory[product.id]) {
+                    this.data.inventory[product.id] = { qty: 0, warehouse: '主仓库' };
+                }
+                
+                if (this.data.scanMode === 'in') {
+                    this.data.inventory[product.id].qty += qty;
+                    this.showToast(`入库成功: ${product.name} +${qty}${product.unit}`);
+                } else {
+                    if (this.data.inventory[product.id].qty < qty) {
+                        this.showToast('库存不足，无法出库');
+                        return;
+                    }
+                    this.data.inventory[product.id].qty -= qty;
+                    this.showToast(`出库成功: ${product.name} -${qty}${product.unit}`);
+                }
+                
+                // 自动生成单据
+                this.autoCreateOrder(product, qty, price, this.data.scanMode);
+                
+                this.saveData();
+                this.closeModal();
+                this.refreshAll();
+            },
+
+            autoCreateOrder(product, qty, price, mode) {
+                const today = new Date().toISOString().split('T')[0];
+                const prefix = mode === 'in' ? 'CG' : 'XS';
+                const count = this.data.orders.filter(o => o.id.startsWith(prefix)).length + 1;
+                const orderId = `${prefix}${today.replace(/-/g, '')}${String(count).padStart(3, '0')}`;
+                
+                const order = {
+                    id: orderId,
+                    type: mode === 'in' ? 'purchase' : 'sales',
+                    date: today,
+                    partnerId: mode === 'in' ? 's1' : 'c1',
+                    partnerName: mode === 'in' ? '扫码入库' : '扫码销售',
+                    items: [{
+                        productId: product.id,
+                        name: product.name,
+                        spec: product.spec,
+                        qty: qty,
+                        price: price,
+                        unit: product.unit
+                    }],
+                    totalQty: qty,
+                    totalAmount: qty * price,
+                    status: 'completed',
+                    remark: '扫码' + (mode === 'in' ? '入库' : '出库')
+                };
+                
+                this.data.orders.unshift(order);
+            },
+
+            // 商品管理
+            renderProducts() {
+                const filter = this.data.currentProductFilter || 'all';
+                let products = this.data.products;
+                
+                if (filter !== 'all') {
+                    products = products.filter(p => p.category === filter);
+                }
+                
+                const html = products.map(p => {
+                    const inv = this.data.inventory[p.id] || { qty: 0 };
+                    const isLow = inv.qty <= p.minStock;
+                    return `
+                        <div class="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 swipe-card" onclick="app.editProduct('${p.id}')">
+                            <div class="flex items-start justify-between">
+                                <div class="flex-1">
+                                    <div class="flex items-center gap-2">
+                                        <h4 class="font-bold text-gray-800">${p.name}</h4>
+                                        ${isLow ? '<span class="px-1.5 py-0.5 bg-red-100 text-red-600 text-[10px] rounded">缺货</span>' : ''}
+                                    </div>
+                                    <div class="text-xs text-gray-500 mt-1">${p.spec} | ${p.barcode}</div>
+                                    <div class="flex items-center gap-4 mt-2 text-xs">
+                                        <span class="text-gray-500">库存: <span class="${isLow ? 'text-red-600 font-bold' : 'text-gray-700'}">${inv.qty}${p.unit}</span></span>
+                                        <span class="text-gray-500">售价: ¥${p.price.toFixed(2)}</span>
+                                    </div>
+                                </div>
+                                <div class="w-10 h-10 bg-gray-50 rounded-xl flex items-center justify-center">
+                                    <i class="fas fa-chevron-right text-gray-300 text-xs"></i>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+                
+                document.getElementById('product-list').innerHTML = html || '<div class="text-center text-gray-400 text-sm py-8">暂无商品</div>';
+            },
+
+            filterProducts(cat) {
+                this.data.currentProductFilter = cat;
+                document.querySelectorAll('.cat-btn').forEach(btn => {
+                    if (btn.textContent === this.getCatLabel(cat) || (cat === 'all' && btn.textContent === '全部')) {
+                        btn.classList.add('bg-theme', 'text-white');
+                        btn.classList.remove('bg-gray-100', 'text-gray-600');
+                    } else {
+                        btn.classList.remove('bg-theme', 'text-white');
+                        btn.classList.add('bg-gray-100', 'text-gray-600');
+                    }
+                });
+                this.renderProducts();
+            },
+
+            getCatLabel(cat) {
+                const labels = { tool: '工具', electrical: '电气', plumbing: '水暖', hardware: '五金配件', paint: '油漆涂料' };
+                return labels[cat] || cat;
+            },
+
+            showProductModal(barcode = '') {
+                this.data.editingProduct = null;
+                document.getElementById('product-modal-title').textContent = '添加商品';
+                document.getElementById('prod-barcode').value = barcode;
+                document.getElementById('prod-name').value = '';
+                document.getElementById('prod-spec').value = '';
+                document.getElementById('prod-cost').value = '';
+                document.getElementById('prod-price').value = '';
+                document.getElementById('prod-min-stock').value = '10';
+                document.getElementById('prod-remark').value = '';
+                document.getElementById('prod-category').value = 'hardware';
+                document.getElementById('prod-unit').value = '个';
+                
+                document.getElementById('modal-overlay').classList.remove('hidden');
+                document.getElementById('modal-product').classList.remove('hidden');
+            },
+
+            editProduct(id) {
+                const p = this.data.products.find(x => x.id === id);
+                if (!p) return;
+                
+                this.data.editingProduct = p;
+                document.getElementById('product-modal-title').textContent = '编辑商品';
+                document.getElementById('prod-barcode').value = p.barcode;
+                document.getElementById('prod-name').value = p.name;
+                document.getElementById('prod-spec').value = p.spec;
+                document.getElementById('prod-cost').value = p.cost;
+                document.getElementById('prod-price').value = p.price;
+                document.getElementById('prod-min-stock').value = p.minStock;
+                document.getElementById('prod-remark').value = p.remark || '';
+                document.getElementById('prod-category').value = p.category;
+                document.getElementById('prod-unit').value = p.unit;
+                
+                document.getElementById('modal-overlay').classList.remove('hidden');
+                document.getElementById('modal-product').classList.remove('hidden');
+            },
+
+            saveProduct() {
+                const barcode = document.getElementById('prod-barcode').value.trim();
+                const name = document.getElementById('prod-name').value.trim();
+                
+                if (!barcode || !name) {
+                    this.showToast('请填写条码和名称');
+                    return;
+                }
+                
+                const product = {
+                    id: this.data.editingProduct ? this.data.editingProduct.id : Date.now().toString(),
+                    barcode,
+                    name,
+                    category: document.getElementById('prod-category').value,
+                    spec: document.getElementById('prod-spec').value.trim(),
+                    unit: document.getElementById('prod-unit').value,
+                    cost: parseFloat(document.getElementById('prod-cost').value) || 0,
+                    price: parseFloat(document.getElementById('prod-price').value) || 0,
+                    minStock: parseInt(document.getElementById('prod-min-stock').value) || 10,
+                    remark: document.getElementById('prod-remark').value.trim()
+                };
+                
+                if (this.data.editingProduct) {
+                    const idx = this.data.products.findIndex(p => p.id === product.id);
+                    this.data.products[idx] = product;
+                    this.showToast('商品更新成功');
+                } else {
+                    // 检查条码是否重复
+                    if (this.data.products.find(p => p.barcode === barcode)) {
+                        this.showToast('该条码已存在');
+                        return;
+                    }
+                    this.data.products.push(product);
+                    this.data.inventory[product.id] = { qty: 0, warehouse: '主仓库' };
+                    this.showToast('商品添加成功');
+                }
+                
+                this.saveData();
+                this.closeModal();
+                this.refreshAll();
+            },
+
+            scanForProduct() {
+                this.showToast('请使用摄像头扫描');
+            },
+
+            // 库存管理
+            renderInventory() {
+                let totalSku = 0, totalQty = 0, totalValue = 0;
+                const rows = [];
+                
+                this.data.products.forEach(p => {
+                    const inv = this.data.inventory[p.id];
+                    if (inv) {
+                        totalSku++;
+                        totalQty += inv.qty;
+                        totalValue += inv.qty * p.cost;
+                        
+                        const isLow = inv.qty <= p.minStock;
+                        rows.push({
+                            ...p,
+                            qty: inv.qty,
+                            isLow,
+                            value: inv.qty * p.cost
+                        });
+                    }
+                });
+                
+                document.getElementById('inv-total-sku').textContent = totalSku;
+                document.getElementById('inv-total-qty').textContent = totalQty;
+                document.getElementById('inv-total-value').textContent = '¥' + totalValue.toFixed(0);
+                
+                // 默认按数量排序
+                rows.sort((a, b) => b.qty - a.qty);
+                
+                const html = rows.map(r => `
+                    <tr class="border-b border-gray-50 last:border-0 ${r.isLow ? 'bg-red-50' : ''}">
+                        <td class="p-3 text-gray-800 font-medium">${r.name}</td>
+                        <td class="p-3 text-right text-gray-500">${r.spec}</td>
+                        <td class="p-3 text-right font-bold ${r.isLow ? 'text-red-600' : 'text-gray-800'}">${r.qty}</td>
+                        <td class="p-3 text-right text-gray-500">${r.minStock}</td>
+                        <td class="p-3 text-right">
+                            <span class="px-2 py-1 rounded text-[10px] ${r.isLow ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}">
+                                ${r.isLow ? '不足' : '正常'}
+                            </span>
+                        </td>
+                    </tr>
+                `).join('');
+                
+                document.getElementById('inventory-table').innerHTML = html || '<tr><td colspan="5" class="p-4 text-center text-gray-400 text-xs">暂无库存数据</td></tr>';
+            },
+
+            sortInventory(by) {
+                const tbody = document.getElementById('inventory-table');
+                const rows = Array.from(tbody.querySelectorAll('tr'));
+                rows.sort((a, b) => {
+                    if (by === 'qty') {
+                        return parseInt(b.children[2].textContent) - parseInt(a.children[2].textContent);
+                    } else {
+                        // 简化处理，实际应按值排序
+                        return 0;
+                    }
+                });
+                rows.forEach(r => tbody.appendChild(r));
+            },
+
+            refreshInventory() {
+                this.renderInventory();
+                this.showToast('库存已刷新');
+            },
+
+            // 单据管理
+            renderOrders() {
+                const type = this.data.currentOrderType;
+                const filter = this.data.currentOrderFilter;
+                
+                let orders = this.data.orders.filter(o => o.type === type);
+                
+                // 日期筛选
+                const today = new Date().toISOString().split('T')[0];
+                if (filter === 'today') {
+                    orders = orders.filter(o => o.date === today);
+                } else if (filter === 'week') {
+                    const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
+                    orders = orders.filter(o => o.date >= weekAgo);
+                } else if (filter === 'month') {
+                    orders = orders.filter(o => o.date.startsWith(today.substring(0, 7)));
+                }
+                
+                // 排序
+                orders.sort((a, b) => b.id.localeCompare(a.id));
+                
+                const html = orders.map(o => `
+                    <div class="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 swipe-card" onclick="app.viewOrder('${o.id}')">
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs font-mono text-gray-500">${o.id}</span>
+                                <span class="px-2 py-0.5 bg-green-100 text-green-700 text-[10px] rounded">${o.status === 'completed' ? '已完成' : '待处理'}</span>
+                            </div>
+                            <span class="text-xs text-gray-400">${o.date}</span>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <div class="text-sm font-medium text-gray-800">${o.partnerName}</div>
+                                <div class="text-xs text-gray-500 mt-1">${o.items.length} 种商品，共 ${o.totalQty} 件</div>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-lg font-bold text-gray-800">¥${o.totalAmount.toFixed(2)}</div>
+                            </div>
+                        </div>
+                        ${o.remark ? `<div class="mt-2 text-xs text-gray-400 bg-gray-50 p-2 rounded-lg">${o.remark}</div>` : ''}
+                    </div>
+                `).join('');
+                
+                document.getElementById('order-list').innerHTML = html || '<div class="text-center text-gray-400 text-sm py-8">暂无单据</div>';
+            },
+
+            switchOrderType(type) {
+                this.data.currentOrderType = type;
+                ['purchase', 'sales', 'return'].forEach(t => {
+                    const btn = document.getElementById(`tab-${t}`);
+                    if (t === type) {
+                        btn.classList.add('bg-white', 'text-gray-800', 'shadow-sm');
+                        btn.classList.remove('text-gray-500');
+                    } else {
+                        btn.classList.remove('bg-white', 'text-gray-800', 'shadow-sm');
+                        btn.classList.add('text-gray-500');
+                    }
+                });
+                this.renderOrders();
+            },
+
+            filterOrders(filter) {
+                this.data.currentOrderFilter = filter;
+                document.querySelectorAll('.order-filter').forEach(btn => {
+                    if (btn.textContent === this.getFilterLabel(filter)) {
+                        btn.classList.add('bg-theme', 'text-white');
+                        btn.classList.remove('bg-gray-100', 'text-gray-600');
+                    } else {
+                        btn.classList.remove('bg-theme', 'text-white');
+                        btn.classList.add('bg-gray-100', 'text-gray-600');
+                    }
+                });
+                this.renderOrders();
+            },
+
+            getFilterLabel(f) {
+                const labels = { today: '今日', week: '本周', month: '本月', all: '全部' };
+                return labels[f];
+            },
+
+            showOrderModal() {
+                const type = this.data.currentOrderType;
+                const today = new Date().toISOString().split('T')[0];
+                const prefix = type === 'purchase' ? 'CG' : type === 'sales' ? 'XS' : 'TH';
+                const count = this.data.orders.filter(o => o.id.startsWith(prefix)).length + 1;
+                
+                document.getElementById('order-modal-title').textContent = type === 'purchase' ? '新建进货单' : type === 'sales' ? '新建销售单' : '新建退货单';
+                document.getElementById('order-type-label').textContent = type === 'purchase' ? '进货单' : type === 'sales' ? '销售单' : '退货单';
+                document.getElementById('order-no').textContent = `${prefix}${today.replace(/-/g, '')}${String(count).padStart(3, '0')}`;
+                document.getElementById('order-date').textContent = today;
+                document.getElementById('partner-label').textContent = type === 'purchase' ? '供应商' : '客户';
+                
+                // 填充往来单位
+                const partners = type === 'purchase' ? this.data.suppliers : this.data.customers;
+                const partnerSelect = document.getElementById('order-partner');
+                partnerSelect.innerHTML = partners.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+                
+                this.data.tempOrderItems = [];
+                this.renderOrderItems();
+                
+                document.getElementById('modal-overlay').classList.remove('hidden');
+                document.getElementById('modal-order').classList.remove('hidden');
+            },
+
+            addOrderItem() {
+                // 简化：直接添加一个选择商品的界面
+                const products = this.data.products;
+                const product = products[Math.floor(Math.random() * products.length)]; // 演示用随机选择
+                const inv = this.data.inventory[product.id];
+                
+                const item = {
+                    productId: product.id,
+                    name: product.name,
+                    spec: product.spec,
+                    qty: 1,
+                    price: this.data.currentOrderType === 'purchase' ? product.cost : product.price,
+                    unit: product.unit
+                };
+                
+                this.data.tempOrderItems.push(item);
+                this.renderOrderItems();
+            },
+
+            renderOrderItems() {
+                const html = this.data.tempOrderItems.map((item, idx) => `
+                    <div class="flex items-center gap-2 bg-gray-50 p-2 rounded-lg">
+                        <div class="flex-1">
+                            <div class="text-sm font-medium text-gray-800">${item.name}</div>
+                            <div class="text-xs text-gray-500">${item.spec} | ¥${item.price.toFixed(2)}/${item.unit}</div>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button onclick="app.updateItemQty(${idx}, -1)" class="w-6 h-6 bg-white rounded border border-gray-200 flex items-center justify-center active:bg-gray-100">-</button>
+                            <input type="number" value="${item.qty}" class="w-12 text-center text-sm bg-white border border-gray-200 rounded py-1" onchange="app.setItemQty(${idx}, this.value)">
+                            <button onclick="app.updateItemQty(${idx}, 1)" class="w-6 h-6 bg-white rounded border border-gray-200 flex items-center justify-center active:bg-gray-100">+</button>
+                        </div>
+                        <button onclick="app.removeItem(${idx})" class="w-8 h-8 text-red-400 flex items-center justify-center">
+                            <i class="fas fa-trash-can text-xs"></i>
+                        </button>
+                    </div>
+                `).join('');
+                
+                document.getElementById('order-items').innerHTML = html || '<div class="text-center text-gray-400 text-xs py-4">点击上方按钮添加商品</div>';
+                
+                // 计算合计
+                const totalQty = this.data.tempOrderItems.reduce((sum, i) => sum + i.qty, 0);
+                const totalAmount = this.data.tempOrderItems.reduce((sum, i) => sum + i.qty * i.price, 0);
+                document.getElementById('order-total-qty').textContent = totalQty;
+                document.getElementById('order-total-amount').textContent = '¥' + totalAmount.toFixed(2);
+            },
+
+            updateItemQty(idx, delta) {
+                this.data.tempOrderItems[idx].qty = Math.max(1, this.data.tempOrderItems[idx].qty + delta);
+                this.renderOrderItems();
+            },
+
+            setItemQty(idx, val) {
+                this.data.tempOrderItems[idx].qty = Math.max(1, parseInt(val) || 1);
+                this.renderOrderItems();
+            },
+
+            removeItem(idx) {
+                this.data.tempOrderItems.splice(idx, 1);
+                this.renderOrderItems();
+            },
+
+            saveOrder() {
+                if (this.data.tempOrderItems.length === 0) {
+                    this.showToast('请至少添加一个商品');
+                    return;
+                }
+                
+                const type = this.data.currentOrderType;
+                const partnerSelect = document.getElementById('order-partner');
+                const partnerId = partnerSelect.value;
+                const partnerName = partnerSelect.options[partnerSelect.selectedIndex].text;
+                
+                const totalQty = this.data.tempOrderItems.reduce((sum, i) => sum + i.qty, 0);
+                const totalAmount = this.data.tempOrderItems.reduce((sum, i) => sum + i.qty * i.price, 0);
+                
+                const order = {
+                    id: document.getElementById('order-no').textContent,
+                    type,
+                    date: document.getElementById('order-date').textContent,
+                    partnerId,
+                    partnerName,
+                    items: [...this.data.tempOrderItems],
+                    totalQty,
+                    totalAmount,
+                    status: 'completed',
+                    remark: document.getElementById('order-remark').value.trim()
+                };
+                
+                // 更新库存
+                this.data.tempOrderItems.forEach(item => {
+                    if (!this.data.inventory[item.productId]) {
+                        this.data.inventory[item.productId] = { qty: 0, warehouse: '主仓库' };
+                    }
+                    if (type === 'purchase') {
+                        this.data.inventory[item.productId].qty += item.qty;
+                    } else if (type === 'sales') {
+                        this.data.inventory[item.productId].qty -= item.qty;
+                    }
+                });
+                
+                this.data.orders.unshift(order);
+                this.saveData();
+                this.closeModal();
+                this.showToast('单据保存成功');
+                this.refreshAll();
+            },
+
+            viewOrder(id) {
+                const order = this.data.orders.find(o => o.id === id);
+                if (!order) return;
+                
+                const itemsHtml = order.items.map(i => `
+                    <div class="flex justify-between text-sm py-1">
+                        <span>${i.name} ${i.spec} × ${i.qty}${i.unit}</span>
+                        <span>¥${(i.qty * i.price).toFixed(2)}</span>
+                    </div>
+                `).join('');
+                
+                const content = `
+                    <div class="space-y-3">
+                        <div class="text-center border-b border-gray-100 pb-3">
+                            <div class="font-bold text-lg">${order.type === 'purchase' ? '进货单' : order.type === 'sales' ? '销售单' : '退货单'}</div>
+                            <div class="text-xs text-gray-500 mt-1">${order.id}</div>
+                        </div>
+                        <div class="space-y-1 text-sm">
+                            <div class="flex justify-between"><span class="text-gray-500">日期:</span><span>${order.date}</span></div>
+                            <div class="flex justify-between"><span class="text-gray-500">往来单位:</span><span>${order.partnerName}</span></div>
+                            <div class="flex justify-between"><span class="text-gray-500">状态:</span><span class="text-green-600">已完成</span></div>
+                        </div>
+                        <div class="border-t border-b border-gray-100 py-2">
+                            <div class="text-xs text-gray-500 mb-2">商品明细</div>
+                            ${itemsHtml}
+                        </div>
+                        <div class="flex justify-between font-bold text-lg">
+                            <span>合计</span>
+                            <span>¥${order.totalAmount.toFixed(2)}</span>
+                        </div>
+                        ${order.remark ? `<div class="text-xs text-gray-500 bg-gray-50 p-2 rounded">备注: ${order.remark}</div>` : ''}
+                        <button onclick="app.closeModal()" class="w-full bg-theme text-white py-3 rounded-xl font-medium mt-2">关闭</button>
+                    </div>
+                `;
+                
+                // 使用alert模拟详情弹窗（简化）
+                this.showToast('单据详情已打印到控制台');
+                console.log('Order Detail:', order);
+            },
+
+            quickAddPartner() {
+                this.showToast('功能开发中，请先基础设置中添加');
+            },
+
+            // 统计报表
+            renderStats() {
+                // 生成近7天销售柱状图（简化版）
+                const days = [];
+                const values = [];
+                for (let i = 6; i >= 0; i--) {
+                    const d = new Date(Date.now() - i * 86400000);
+                    const dateStr = d.toISOString().split('T')[0];
+                    const daySales = this.data.orders
+                        .filter(o => o.type === 'sales' && o.date === dateStr)
+                        .reduce((sum, o) => sum + o.totalAmount, 0);
+                    days.push(d.getMonth() + 1 + '/' + d.getDate());
+                    values.push(daySales);
+                }
+                
+                const maxVal = Math.max(...values, 1);
+                const chartHtml = values.map(v => `
+                    <div class="flex-1 flex flex-col items-center gap-1">
+                        <div class="w-full bg-blue-500 rounded-t-lg transition-all relative group" style="height: ${(v / maxVal * 100)}%">
+                            <div class="absolute -top-6 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-[10px] px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                                ¥${v.toFixed(0)}
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+                
+                document.getElementById('sales-chart').innerHTML = chartHtml;
+                document.getElementById('chart-labels').innerHTML = days.map(d => `<span>${d}</span>`).join('');
+                
+                // 品类占比
+                const catStats = {};
+                this.data.orders.filter(o => o.type === 'sales').forEach(o => {
+                    o.items.forEach(i => {
+                        const p = this.data.products.find(x => x.id === i.productId);
+                        if (p) {
+                            catStats[p.category] = (catStats[p.category] || 0) + i.qty * i.price;
+                        }
+                    });
+                });
+                
+                const catTotal = Object.values(catStats).reduce((a, b) => a + b, 0) || 1;
+                const catLabels = { tool: '工具', electrical: '电气', plumbing: '水暖', hardware: '五金配件', paint: '油漆涂料' };
+                const catColors = { tool: 'bg-blue-500', electrical: 'bg-yellow-500', plumbing: 'bg-green-500', hardware: 'bg-purple-500', paint: 'bg-pink-500' };
+                
+                const catHtml = Object.entries(catStats).map(([cat, val]) => `
+                    <div>
+                        <div class="flex justify-between text-xs mb-1">
+                            <span class="text-gray-600">${catLabels[cat] || cat}</span>
+                            <span class="font-medium">¥${val.toFixed(0)} (${(val/catTotal*100).toFixed(1)}%)</span>
+                        </div>
+                        <div class="w-full bg-gray-100 rounded-full h-2">
+                            <div class="${catColors[cat] || 'bg-gray-500'} h-2 rounded-full transition-all" style="width: ${(val/catTotal*100)}%"></div>
+                        </div>
+                    </div>
+                `).join('');
+                
+                document.getElementById('category-stats').innerHTML = catHtml || '<div class="text-center text-gray-400 text-xs">暂无数据</div>';
+                
+                // 热销排行
+                const productSales = {};
+                this.data.orders.filter(o => o.type === 'sales').forEach(o => {
+                    o.items.forEach(i => {
+                        productSales[i.productId] = (productSales[i.productId] || 0) + i.qty;
+                    });
+                });
+                
+                const topProducts = Object.entries(productSales)
+                    .map(([id, qty]) => {
+                        const p = this.data.products.find(x => x.id === id);
+                        return { ...p, saleQty: qty };
+                    })
+                    .filter(p => p.id)
+                    .sort((a, b) => b.saleQty - a.saleQty)
+                    .slice(0, 5);
+                
+                const topHtml = topProducts.map((p, idx) => `
+                    <div class="flex items-center gap-3">
+                        <div class="w-6 h-6 ${idx < 3 ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-500'} rounded-full flex items-center justify-center text-xs font-bold">
+                            ${idx + 1}
+                        </div>
+                        <div class="flex-1">
+                            <div class="text-sm font-medium text-gray-800">${p.name}</div>
+                            <div class="text-xs text-gray-500">${p.spec}</div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-sm font-bold text-gray-800">${p.saleQty}${p.unit}</div>
+                        </div>
+                    </div>
+                `).join('');
+                
+                document.getElementById('top-products').innerHTML = topHtml || '<div class="text-center text-gray-400 text-xs">暂无数据</div>';
+            },
+
+            setStatsPeriod(p) {
+                document.querySelectorAll('.stats-period').forEach(btn => {
+                    if (btn.textContent.includes(p === 'week' ? '7' : p === 'month' ? '月' : '季')) {
+                        btn.classList.add('bg-theme', 'text-white');
+                        btn.classList.remove('bg-gray-100', 'text-gray-600');
+                    } else {
+                        btn.classList.remove('bg-theme', 'text-white');
+                        btn.classList.add('bg-gray-100', 'text-gray-600');
+                    }
+                });
+                this.showToast('统计周期已切换');
+            },
+
+            // 通用功能
+            closeModal() {
+                document.getElementById('modal-overlay').classList.add('hidden');
+                document.querySelectorAll('[id^="modal-"]').forEach(m => m.classList.add('hidden'));
+            },
+
+            showToast(msg) {
+                const toast = document.getElementById('toast');
+                document.getElementById('toast-msg').textContent = msg;
+                toast.classList.remove('hidden');
+                setTimeout(() => {
+                    toast.classList.remove('translate-y-[-20px]', 'opacity-0');
+                }, 10);
+                setTimeout(() => {
+                    toast.classList.add('translate-y-[-20px]', 'opacity-0');
+                    setTimeout(() => toast.classList.add('hidden'), 300);
+                }, 2000);
+            },
+
+            globalSearch(keyword) {
+                if (!keyword) return;
+                this.showToast('搜索: ' + keyword);
+                // 实际应实现全局搜索逻辑
+            },
+
+            showNotifications() {
+                this.showToast('暂无新消息');
+            },
+
+            toggleProfile() {
+                this.navigate('settings');
+            },
+
+            showSetting(key) {
+                const titles = {
+                    store: '店铺信息', staff: '员工管理', print: '打印设置',
+                    backup: '数据备份', clear: '清空数据'
+                };
+                this.showToast(titles[key] + ' 功能开发中');
+                
+                if (key === 'clear') {
+                    if (confirm('确定要清空所有数据吗？此操作不可恢复！')) {
+                        localStorage.removeItem('hardware_erp_data');
+                        location.reload();
+                    }
+                }
+            }
+        };
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', () => {
+            app.init();
+        });
+    </script>
+</body>
+</html>
